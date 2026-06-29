@@ -1,0 +1,7 @@
+# 必需依赖（核心爬取 + 抽奖）
+python-dateutil>=2.8
+openpyxl>=3.0        # 仅 Excel 输出需要；只用 CSV 可不装
+
+# 可选依赖（仅当使用浏览器自动化自动获取 cookie 时）
+# 安装后还需执行: python -m playwright install chromium
+# playwright>=1.40
