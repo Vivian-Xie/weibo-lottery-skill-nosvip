@@ -1,6 +1,6 @@
 ---
 name: weibo-lottery
-description: 微博转发/评论抽奖全流程。当用户给出一条微博链接，要求对其转发或评论做抽奖（爬取参与者、去重、随机抽 N 人、可按话题过滤、输出 CSV/Excel 名单）时使用。关键词：微博抽奖、转发抽奖、评论抽奖、weibo lottery、抽一个人、转发去重、话题过滤抽奖、爬转发、爬评论。基于开源项目 nghuyong/WeiboSpider 的解析逻辑改写（MIT）。
+description: 微博转发/评论抽奖全流程。当用户给出一条微博链接，要求对其转发或评论做抽奖（爬取参与者、去重、随机抽 N 人、可按话题过滤、输出 CSV/Excel 名单）时使用。关键词：微博抽奖、转发抽奖、评论抽奖、weibo lottery、抽一个人、转发去重、话题过滤抽奖、爬转发、爬评论。基于开源项目 nghuyong/WeiboSpider 的解析逻辑改写。
 license: MIT
 ---
 
@@ -52,12 +52,12 @@ pip install python-dateutil openpyxl
 
 按下面顺序选择，**优先用最通用、对用户最省事的方式**（完整说明见 `references/get_cookie.md`）：
 
-- **方式 A（默认）· 用户直接粘贴**：让用户登录微博后复制整行 Cookie 粘进对话。任何 agent、任何环境都适用。
-- **方式 B · 手动 F12 指引**：把 `references/get_cookie.md` 里的图文步骤完整发给用户，引导其复制。无任何依赖。
-- **方式 C（可选）· 浏览器自动化自动取**：⭐ **仅当当前 agent 本身具备「控制本机浏览器」的能力时使用**。
+
+- **方式 A（默认，判断是否能执行）· 浏览器自动化自动取**：⭐ **仅当当前 agent 本身具备「控制本机浏览器」的能力时使用**。
   - agent 应**优先复用已有的浏览器自动化能力**（如能直接接管用户日常浏览器、或已接入 clawbrowser / Playwright MCP / browser-use / Selenium 等），让它打开 weibo.com → 等用户登录 → 读出 cookie。**不要自己从零硬写浏览器控制。**
   - 若都没有但本机有图形界面且能装 playwright，可用本包附带的现成脚本 `scripts/optional/get_cookie_rpa.py`（弹窗登录→自动写 cookie）。
   - 无图形界面 / 无浏览器控制能力 → 不要勉强，回退到方式 A / B。
+- **方式 B · 手动 F12 指引**：把 `references/get_cookie.md` 里的图文步骤完整发给用户，引导其复制。无任何依赖。
 
 > 💡 给 agent 的提醒：cookie 来源不限，核心流程对此完全解耦。你只要最终拿到一份**单行、含 SUB/SUBP/ALF 的有效 cookie** 写入 `cookie.txt` 即可。
 
