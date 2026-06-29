@@ -16,15 +16,16 @@ license: MIT
 
 ## 前置依赖
 
-只有两个**必需**依赖（任何环境都能装）：
-
 ```bash
-pip install python-dateutil openpyxl
+pip install python-dateutil openpyxl playwright
+python -m playwright install chromium      # 安装浏览器内核，自动取 cookie 必需
 ```
 
-- `python-dateutil`：解析微博时间。
-- `openpyxl`：输出 Excel（只要 CSV 可不装）。
-- `playwright` **是可选的**，仅当用「浏览器自动化自动取 cookie」时才需要（见第 2 步），核心爬取+抽奖不依赖它。
+- `python-dateutil`：解析微博时间。**必需**。
+- `openpyxl`：输出 Excel（只用 CSV 可不装）。
+- `playwright`：**默认依赖**。本 skill 默认用浏览器自动化自动获取 cookie（见第 1 步），桌面环境请直接安装。
+  - ⚠️ **务必同时执行 `python -m playwright install chromium`**——只 `pip install playwright` 没装内核，弹窗会失败。
+  - 仅当运行在**无图形界面**的服务器 / 容器 / CI 时，才可跳过 playwright，改用手动粘贴 cookie。
 
 建议用隔离 venv 运行，之后用该 venv 的 python 跑脚本。
 
@@ -45,21 +46,34 @@ pip install python-dateutil openpyxl
 
 把这些落成一句明确的执行计划复述给用户，再继续。
 
-### 第 1 步：获取 Cookie（能力中立，按通用性降级）
+### 第 1 步：获取 Cookie（⭐ 默认走浏览器自动化，自动安装 playwright）
 
 抽奖需要一份**已登录微博账号**的 cookie（核心字段 `SUB`/`SUBP`/`ALF`）。
 **登录必须用户本人完成**（平台安全机制，无法自动化）；自动化的只是「登录后取出 cookie」。
 
-按下面顺序选择，**优先用最通用、对用户最省事的方式**（完整说明见 `references/get_cookie.md`）：
+**默认方式 = 浏览器自动化自动取 cookie**。除非运行在无图形界面环境，否则 agent 应直接走这条路径，**不要**先问用户要手动粘贴的 cookie。完整说明见 `references/get_cookie.md`。
 
+#### 默认：浏览器自动化自动取（弹窗登录 → 自动写 cookie）
 
-- **方式 A（默认，判断是否能执行）· 浏览器自动化自动取**：⭐ **仅当当前 agent 本身具备「控制本机浏览器」的能力时使用**。
-  - agent 应**优先复用已有的浏览器自动化能力**（如能直接接管用户日常浏览器、或已接入 clawbrowser / Playwright MCP / browser-use / Selenium 等），让它打开 weibo.com → 等用户登录 → 读出 cookie。**不要自己从零硬写浏览器控制。**
-  - 若都没有但本机有图形界面且能装 playwright，可用本包附带的现成脚本 `scripts/optional/get_cookie_rpa.py`（弹窗登录→自动写 cookie）。
-  - 无图形界面 / 无浏览器控制能力 → 不要勉强，回退到方式 A / B。
-- **方式 B · 手动 F12 指引**：把 `references/get_cookie.md` 里的图文步骤完整发给用户，引导其复制。无任何依赖。
+1. **先确保浏览器能力就绪**（默认就做，不要跳过）：
+   - 若 agent 已接入现成的浏览器自动化能力（接管用户日常浏览器 / clawbrowser / Playwright MCP / browser-use / Selenium 等），**优先复用它**，不要从零硬写。
+   - 否则**直接安装本包默认依赖 playwright** 并用附带脚本：
+     ```bash
+     pip install playwright && python -m playwright install chromium
+     ```
+2. **提示用户准备登录**：告诉用户"接下来会弹出一个浏览器窗口，请在里面登录微博（扫码/账密），登录后我会自动取走 cookie"，等用户回复"继续"再弹窗。
+3. **运行自动取 cookie 脚本**：
+   ```bash
+   python scripts/optional/get_cookie_rpa.py --out ./cookie.txt --timeout 300
+   ```
+   - 成功 stdout 打印 `COOKIE_OK`，cookie 已写入 `--out`；用持久化 profile，下次通常免登录。
+   - 超时未登录退出码 2 → 才回退到手动方式。
 
-> 💡 给 agent 的提醒：cookie 来源不限，核心流程对此完全解耦。你只要最终拿到一份**单行、含 SUB/SUBP/ALF 的有效 cookie** 写入 `cookie.txt` 即可。
+#### 回退：手动获取（仅当无图形界面 / playwright 装不上 / RPA 失败）
+
+把 `references/get_cookie.md` 里的 F12 图文步骤完整发给用户，让其复制 Cookie 整行粘贴；agent 写入 `cookie.txt`（单行）。无任何依赖，但需用户手动操作。
+
+> 💡 给 agent 的提醒：核心流程对 cookie 来源完全解耦——无论自动还是手动，最终拿到一份**单行、含 SUB/SUBP/ALF 的有效 cookie** 写入 `cookie.txt` 即可。但**默认应主动走自动化，把手动当兜底**。
 
 **验证 cookie 有效性**（强烈建议先验证再爬）：
 
@@ -120,7 +134,7 @@ python scripts/lottery.py \
 ## 关键坑（务必注意）
 
 1. **先问需求再动手**：第 0 步的 4 个问题（转发/评论、奖项人数、话题过滤、表格形式）没确认清楚就别爬。
-2. **cookie 获取能力中立**：优先粘贴/F12，浏览器自动化仅在 agent 本身有该能力时才用，别为它引入硬依赖。
+2. **cookie 默认走浏览器自动化**：桌面环境默认安装 playwright（含 `playwright install chromium`）并用 RPA 弹窗自动取 cookie，不要默认让用户手动粘贴；仅无图形界面时才回退手动 F12。
 3. **纯数字 mid 不要再做 base62 转换**——crawl.py 内部 `resolve_mid()` 自动判断（纯数字原样、短码才转）。早期曾因二次解码爬空。
 4. **cookie 必须含 SUB/SUBP/ALF**，否则接口返回空或被重定向到登录页。
 5. **转发 vs 评论别搞混**：repostTimeline=转发；buildComments=评论。
