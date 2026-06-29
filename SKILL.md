@@ -117,6 +117,7 @@ python scripts/lottery.py \
     --pool-out /path/to/output/有效参与名单.xlsx
 ```
 - `--n` 抽几人；`--label` 奖项名；`--tags` 可选话题过滤（**同时**含所有话题才有效）；`--format csv|xlsx`。
+- **话题是「完整精确匹配」，绝不模糊/子串**：脚本会把文案里 `#...#` 解析成完整话题 token 再精确比对。要求 `#cp#` 时，`#cp99#`、`#cphh#` **一律不命中**。tag 写成 `#cp#` / `#cp` / `cp` 都等价。
 - 去重按 `user._id`：一人多次只算一次，保证一人一票。
 
 ### 第 4 步：展示结果
