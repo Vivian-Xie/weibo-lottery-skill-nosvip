@@ -3,13 +3,10 @@
 """
 微博抽奖：读取 crawl.py 产出的 jsonl -> 话题过滤(可选) -> 按用户ID去重 -> 随机抽 N 人 -> 输出名单。
 
-Part of the weibo-lottery skill. MIT License. Copyright (c) 2026 vivian.
-
 特性:
 - 按 user._id 去重（同一人多次转发/评论只算一次参与）。
-- 可选话题过滤 --tags：仅保留文案 content 中【完整出现】所有指定话题的记录。
-  采用「解析出 #...# 完整话题 token 后精确相等比对」，绝不模糊/子串匹配：
-  要求 #cp# 时，#cp99# / #cphh# 一律不命中。用户传 #cp# / #cp / cp 均等价。
+- 可选话题过滤 --tags：仅保留文案 content 同时包含所有指定话题的记录。
+- 可选排除名单 --exclude-uid：从参与池里剔除指定用户ID（常用于去掉博主本人/小号/工作人员），可多个。
 - 加密级随机 random.SystemRandom，公平不可预测。
 - 输出格式 --format csv|xlsx（xlsx 需 openpyxl）。
 - --winners-out 指定中奖名单文件；提供 --pool-out 则额外导出去重后的完整参与名单。
@@ -18,6 +15,7 @@ Part of the weibo-lottery skill. MIT License. Copyright (c) 2026 vivian.
     python lottery.py --jsonl ./output/repost_xxx.jsonl --n 1 \
         --label "转发抽一位·大月卡" \
         --tags "#刃恒99#" "#千冶刃值得#" \
+        --exclude-uid 5634207347 \
         --format xlsx \
         --winners-out ./output/中奖名单.xlsx \
         --pool-out ./output/有效参与名单.xlsx
@@ -49,10 +47,12 @@ def extract_topics(content):
     return {m.group(1) for m in _TOPIC_RE.finditer(content or "")}
 
 
-def load_pool(jsonl_path, tags):
+def load_pool(jsonl_path, tags, exclude_uids=None):
     # 规范化要求的话题名，做完整精确匹配（不模糊、不子串）
     required = {normalize_tag(t) for t in tags if normalize_tag(t)}
-    total, valid_cnt, seen = 0, 0, {}
+    # 需要从参与池剔除的用户ID（如博主本人/小号），统一转字符串精确比对
+    excluded = {str(x).strip() for x in (exclude_uids or []) if str(x).strip()}
+    total, valid_cnt, excluded_cnt, seen = 0, 0, 0, {}
     for line in open(jsonl_path, "rt", encoding="utf-8"):
         line = line.strip()
         if not line:
@@ -73,6 +73,9 @@ def load_pool(jsonl_path, tags):
         uid = str(u.get("_id", ""))
         if not uid:
             continue
+        if uid in excluded:
+            excluded_cnt += 1
+            continue
         if uid not in seen:
             seen[uid] = {
                 "uid": uid,
@@ -82,7 +85,7 @@ def load_pool(jsonl_path, tags):
                 "home": f"https://weibo.com/u/{uid}",
                 "content": content,
             }
-    return total, valid_cnt, list(seen.values())
+    return total, valid_cnt, excluded_cnt, list(seen.values())
 
 
 def write_csv(path, rows, header):
@@ -146,13 +149,16 @@ def main():
     ap.add_argument("--n", type=int, default=1, help="抽取人数")
     ap.add_argument("--label", default="抽一位", help="奖项名称")
     ap.add_argument("--tags", nargs="*", default=[], help="必须同时包含的话题（可多个）")
+    ap.add_argument("--exclude-uid", nargs="*", default=[],
+                    help="从参与池剔除的用户ID（如博主本人/小号/工作人员，可多个）")
     ap.add_argument("--format", choices=["csv", "xlsx"], default="csv")
     ap.add_argument("--winners-out", required=True)
     ap.add_argument("--pool-out", default="")
     args = ap.parse_args()
 
-    total, valid_cnt, pool = load_pool(args.jsonl, args.tags)
-    print(f"[统计] 原始 {total} 条 | 满足条件 {valid_cnt} 条 | 去重后参与 {len(pool)} 人")
+    total, valid_cnt, excluded_cnt, pool = load_pool(args.jsonl, args.tags, args.exclude_uid)
+    excl_note = f" | 剔除指定UID {excluded_cnt} 条" if args.exclude_uid else ""
+    print(f"[统计] 原始 {total} 条 | 满足条件 {valid_cnt} 条{excl_note} | 去重后参与 {len(pool)} 人")
     if not pool:
         print("[错误] 参与池为空，无法抽奖")
         raise SystemExit(2)
@@ -166,6 +172,7 @@ def main():
         f"有效参与条件：{'文案同时含 ' + ' '.join(args.tags) if args.tags else '无（全部转发/评论者）'}",
         f"原始记录数：{total}",
         f"满足条件记录数：{valid_cnt}",
+        f"排除名单（UID {('、'.join(map(str, args.exclude_uid))) if args.exclude_uid else '无'}）：剔除 {excluded_cnt} 条",
         f"去重后参与人数：{len(pool)}",
         "抽取方式：random.SystemRandom 加密级随机，公平不可预测",
     ]
