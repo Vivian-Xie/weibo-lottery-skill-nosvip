@@ -7,7 +7,9 @@ Part of the weibo-lottery skill. MIT License. Copyright (c) 2026 vivian.
 
 特性:
 - 按 user._id 去重（同一人多次转发/评论只算一次参与）。
-- 可选话题过滤 --tags：仅保留文案 content 同时包含所有指定话题的记录。
+- 可选话题过滤 --tags：仅保留文案 content 中【完整出现】所有指定话题的记录。
+  采用「解析出 #...# 完整话题 token 后精确相等比对」，绝不模糊/子串匹配：
+  要求 #cp# 时，#cp99# / #cphh# 一律不命中。用户传 #cp# / #cp / cp 均等价。
 - 加密级随机 random.SystemRandom，公平不可预测。
 - 输出格式 --format csv|xlsx（xlsx 需 openpyxl）。
 - --winners-out 指定中奖名单文件；提供 --pool-out 则额外导出去重后的完整参与名单。
@@ -26,9 +28,30 @@ import datetime
 import json
 import os
 import random
+import re
+
+
+# 匹配一对 # 包裹的完整微博话题，话题名内部不含 # 和空白
+_TOPIC_RE = re.compile(r"#([^#\s]+)#")
+
+
+def normalize_tag(t):
+    """把用户传入的 tag 规范化为话题名（去掉首尾 # 和空白）。
+    #cp# -> cp ; #cp -> cp ; cp# -> cp ; cp -> cp
+    """
+    return t.strip().strip("#").strip()
+
+
+def extract_topics(content):
+    """从文案中解析出所有【完整话题】token 的集合（话题名，不含 #）。
+    例如 '#cp# 甜 #cp99#' -> {'cp', 'cp99'}
+    """
+    return {m.group(1) for m in _TOPIC_RE.finditer(content or "")}
 
 
 def load_pool(jsonl_path, tags):
+    # 规范化要求的话题名，做完整精确匹配（不模糊、不子串）
+    required = {normalize_tag(t) for t in tags if normalize_tag(t)}
     total, valid_cnt, seen = 0, 0, {}
     for line in open(jsonl_path, "rt", encoding="utf-8"):
         line = line.strip()
@@ -40,8 +63,11 @@ def load_pool(jsonl_path, tags):
         except Exception:  # noqa
             continue
         content = rec.get("content", "") or ""
-        if tags and not all(t in content for t in tags):
-            continue
+        if required:
+            topics = extract_topics(content)
+            # 必须把每个要求的话题作为【完整话题】出现，#cp# 绝不命中 #cp99#
+            if not required.issubset(topics):
+                continue
         valid_cnt += 1
         u = rec.get("user", {}) or {}
         uid = str(u.get("_id", ""))
